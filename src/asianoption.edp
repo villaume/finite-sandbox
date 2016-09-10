@@ -1,0 +1,97 @@
+// Asian Option pricing using FreeFem++
+
+int m=150;
+int Smax=250;
+int Amax=250;
+border aa(t=0,Smax){x=t;y=0;};
+border bb(t=0,Amax){x=Smax;y=t;};
+border cc(t=Smax,0){x=t;y=Amax;};
+border dd(t=Amax,0){x = 0; y = t;};
+
+mesh th = buildmesh(aa(m)+bb(m)+cc(m)+dd(m));
+plot(th,wait=1);
+fespace Vh(th,P2);
+
+real sigma=0.3;
+real r=0.15;
+real K=95;
+real T=1;
+real N=400;
+real nstop=10;
+real dt=T/N;
+real error=0.1;
+real coef= 0.1^(1./5.);
+real eps=0.3;
+real Stest=100;
+real Atest=100;
+
+
+func f = max(y-K,0.);
+Vh u=f,v,w;
+func g= 0;
+
+
+plot(u,th,wait=1);
+
+th = adaptmesh(th,u,abserror=1,nbjacoby=2,
+   err=0.004, nbvx=5000, omega=1.8,ratio=1.8, nbsmooth=3,
+   splitpbedge=1, maxsubdiv=5,rescaling=1 );
+plot(th,wait=1);
+u=u;
+
+int i=0;
+int j=0;
+int n;
+int jstop=N/nstop;
+cout << "N=" << N << endl;
+cout << "jstop=" << jstop << endl;
+
+Vh xveloc = x*(sigma^2-r);
+Vh yveloc = -(x-y)/T;
+
+problem Implicit(u,v,init=j,solver=CG)
+	= int2d(th) ( u*v*(r+1/dt ) + dx(u)*dx(v)*(x*sigma)^2/2.)
+	 + int2d(th)( -convect([xveloc,yveloc],-dt,w)/dt * v )
+	 ;
+
+problem CN(u,v,init=j,solver=LU)
+	= int2d(th)(u*v*(0.5*r+1/dt) + 0.5*dx(u)*dx(v)*(x*sigma)^2/2.)
+	+ int2d(th)(w*v*(0.5*r) + 0.5*dx(w)*dx(v)*(x*sigma)^2/2.)
+	+ int2d(th)( -convect([xveloc,yveloc],-dt,w)/dt * v )
+	;
+
+//Mass lumping
+problem CN2(u,v,init=j,solver=CG)
+	= int2d(th,qft=qf1pTlump)(u*v*(0.5*r+1/dt) + 0.5*dx(u)*dx(v)*(x*sigma)^2/2.)
+	+ int2d(th,qft=qf1pTlump)(w*v*(0.5*r) + 0.5*dx(w)*dx(v)*(x*sigma)^2/2.)
+	+ int2d(th,qft=qf1pTlump)( -convect([xveloc,yveloc],-dt,w)/dt * v )
+	;
+
+
+int ww=1;
+for ( n=0; n < N-1; n++)
+{
+  cout <<" iteration " << n   <<  " j=" << j << endl;
+  w=u;
+  Vh xveloc = x*(sigma^2-r);
+  Vh yveloc = -(x-y)/(T-n*dt);
+  CN;
+  plot(u,wait=ww,cmm="Isovalues of u");
+  ww=0;
+  j=j+1;
+  if(j==jstop)  { cout << " adaptmesh " << endl;
+    th = adaptmesh(th,u,verbosity=1,abserror=1,nbjacoby=2,
+    err=0.001, nbvx=5000, omega=1.8, ratio=1.8, nbsmooth=3,
+    splitpbedge=1, maxsubdiv=5,rescaling=1) ;
+    plot(th,wait=0);
+    j=0;
+    u=u;
+    ww=1;
+    };
+
+  cout << " j = " <<  j << endl;
+  cout<<"Time to strike: "<< T-n*dt <<endl;
+};
+
+plot(u,wait=0,value=1);
+cout << " u(Stest,Atest)= " << u(Stest,Atest) << endl;
